@@ -1,0 +1,12 @@
+
+numpy<2
+pandas
+scipy
+scikit-learn
+imbalanced-learn
+pywavelets
+tensorflow
+shap
+lime
+matplotlib
+joblib
