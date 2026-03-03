@@ -11,8 +11,8 @@ from feature_select import select_features
 from explainability import run_pfi, run_shap, run_lime, run_pdp
 from train_cnn_lstm import build_model
 
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -22,6 +22,7 @@ from sklearn.metrics import (
     matthews_corrcoef,
 )
 from sklearn.utils.class_weight import compute_class_weight
+from imblearn.over_sampling import SMOTE
 from tensorflow.keras.models import load_model
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
@@ -30,36 +31,36 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCh
 SEED = 42
 TRAIN_MODEL = os.getenv("TRAIN_MODEL", "1") == "1"
 MODEL_PATH = os.getenv("MODEL_PATH", "cnn_lstm_emg_paper28.h5")
+PIPELINE_PATH = os.getenv(
+    "PIPELINE_PATH",
+    f"{os.path.splitext(MODEL_PATH)[0]}_pipeline.npz"
+)
 BASE_PATH = "data"
-LABELS = ["Healthy", "Myopathy", "Neuropathy"]
+LABELS_ENV = os.getenv("CLASS_NAMES", "").strip()
+LABELS = [x.strip() for x in LABELS_ENV.split(",") if x.strip()] if LABELS_ENV else []
 EVAL_MODE = os.getenv("EVAL_MODE", "paper_reproduction")  # "paper_reproduction" or "strict"
 FUSION_RULE = os.getenv("FUSION_RULE", "union")  # "intersection", "vote2", "union"
-TOP_K = int(os.getenv("TOP_K", "20"))
+TOP_K = int(os.getenv("TOP_K", "28"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
-EPOCHS = int(os.getenv("EPOCHS", "80"))
+EPOCHS = int(os.getenv("EPOCHS", "50"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "16"))
 VALIDATION_SPLIT = float(os.getenv("VALIDATION_SPLIT", "0.1"))
 USE_CALLBACKS = os.getenv("USE_CALLBACKS", "0") == "1"
 RUN_EXPLAINABILITY = os.getenv("RUN_EXPLAINABILITY", "1") == "1"
-NUM_TRIALS = int(os.getenv("NUM_TRIALS", "3"))
-
-# Paper-protocol approximation controls
-PAPER_PROTOCOL_MODE = True
-FILES_PER_CLASS = int(os.getenv("FILES_PER_CLASS", "50"))      # equal file count per class
-SEGMENTS_PER_FILE = int(os.getenv("SEGMENTS_PER_FILE", "8"))   # split each preprocessed signal
-
-MAX_SAMPLES = None        # used only when PAPER_PROTOCOL_MODE=False
+NUM_TRIALS = int(os.getenv("NUM_TRIALS", "1"))
+ENSEMBLE_TOP_N = int(os.getenv("ENSEMBLE_TOP_N", "1"))
+PAPER_EXACT_MODE = os.getenv("PAPER_EXACT_MODE", "1") == "1"
+PAPER_USE_ALL_FEATURES = os.getenv("PAPER_USE_ALL_FEATURES", "1") == "1"
+PAPER_CLASS_COUNTS = [int(x) for x in os.getenv("PAPER_CLASS_COUNTS", "50,98,93").split(",")]
+SMOTE_TARGET_PER_CLASS = int(os.getenv("SMOTE_TARGET_PER_CLASS", "200"))
+CV_FOLDS = int(os.getenv("CV_FOLDS", "5"))
 
 USE_FEATURE_CACHE = True
 CACHE_DIR = "cache"
-CACHE_VERSION = (
-    f"paper28_ccfs_v3_{EVAL_MODE}_{FUSION_RULE}_k{TOP_K}_bal{FILES_PER_CLASS}_seg{SEGMENTS_PER_FILE}"
-    if PAPER_PROTOCOL_MODE else
-    f"paper28_ccfs_v3_{EVAL_MODE}_{FUSION_RULE}_k{TOP_K}"
-)
+CACHE_VERSION = f"paper28_exact_{EVAL_MODE}_{FUSION_RULE}_k{TOP_K}_smote{SMOTE_TARGET_PER_CLASS}"
 CACHE_PATH = os.path.join(
     CACHE_DIR,
-    f"feature_cache_{CACHE_VERSION}_{'all' if MAX_SAMPLES is None else MAX_SAMPLES}.npz"
+    f"feature_cache_{CACHE_VERSION}.npz"
 )
 RESULTS_DIR = "results"
 REPORT_PATH = os.path.join(RESULTS_DIR, "classification_report.txt")
@@ -74,15 +75,85 @@ def set_global_seed(seed=42):
     tf.random.set_seed(seed)
 
 
-def split_signal_segments(signal, n_segments):
-    if n_segments <= 1:
-        return [signal]
-    segments = np.array_split(signal, n_segments)
-    return [s for s in segments if s.size >= 64]
+def apply_distribution_normalization(X, feature_names):
+    minmax_features = {
+        "Mean",
+        "Variance",
+        "Integrated EMG (IEMG)",
+        "Total Power (TP)",
+        "Signal Duration (SGD)",
+        "Mean Frequency (MNF)",
+        "Median Frequency (MDF)",
+    }
+    robust_features = {
+        "Skewness",
+        "Kurtosis",
+        "Zero Crossings (ZC)",
+        "Willison Amplitude (WAMP)",
+        "Variance of Central Frequency (VCF)",
+        "Max Wavelet Coefficient (MWC)",
+    }
+
+    Xn = X.astype(np.float64).copy()
+    norm_meta = {}
+    for idx, fname in enumerate(feature_names):
+        col = Xn[:, idx:idx + 1]
+        if fname in minmax_features:
+            scaler = MinMaxScaler()
+            Xn[:, idx:idx + 1] = scaler.fit_transform(col)
+            norm_meta[idx] = ("minmax", scaler)
+        elif fname in robust_features:
+            scaler = RobustScaler()
+            Xn[:, idx:idx + 1] = scaler.fit_transform(col)
+            norm_meta[idx] = ("robust", scaler)
+        else:
+            scaler = StandardScaler()
+            Xn[:, idx:idx + 1] = scaler.fit_transform(col)
+            norm_meta[idx] = ("zscore", scaler)
+    return Xn, norm_meta
+
+
+def apply_saved_normalization(X, norm_meta):
+    Xt = X.astype(np.float64).copy()
+    for idx, (_, scaler) in norm_meta.items():
+        Xt[:, idx:idx + 1] = scaler.transform(Xt[:, idx:idx + 1])
+    return Xt
 
 
 set_global_seed(SEED)
 
+top_level_dirs = sorted(
+    [d for d in os.listdir(BASE_PATH) if os.path.isdir(os.path.join(BASE_PATH, d))]
+)
+dataset_groups = []
+labels_from_nested = set()
+for group in top_level_dirs:
+    group_path = os.path.join(BASE_PATH, group)
+    child_dirs = sorted(
+        [d for d in os.listdir(group_path) if os.path.isdir(os.path.join(group_path, d))]
+    )
+    group_has_label_dirs = False
+    for child in child_dirs:
+        child_path = os.path.join(group_path, child)
+        if any(f.endswith(".asc") for f in os.listdir(child_path)):
+            group_has_label_dirs = True
+            labels_from_nested.add(child)
+    if group_has_label_dirs:
+        dataset_groups.append(group)
+
+USE_NESTED_GROUPS = len(dataset_groups) > 0
+if not LABELS:
+    if USE_NESTED_GROUPS:
+        LABELS = sorted(labels_from_nested)
+    else:
+        LABELS = sorted(top_level_dirs)
+if len(LABELS) < 2:
+    raise ValueError(
+        f"Need at least 2 class folders under '{BASE_PATH}'. Found: {LABELS}"
+    )
+print(f"Classes used for training: {LABELS}")
+if USE_NESTED_GROUPS:
+    print(f"Combining data from groups: {dataset_groups}")
 
 label_encoder = LabelEncoder()
 label_encoder.fit(LABELS)
@@ -91,47 +162,91 @@ class_ids = np.arange(len(class_names))
 
 
 # ---------------- DATA LOADING / CACHE ----------------
-if USE_FEATURE_CACHE and os.path.exists(CACHE_PATH):
+use_cache = USE_FEATURE_CACHE and os.path.exists(CACHE_PATH)
+if use_cache:
     print(f"Loading cached features from: {CACHE_PATH}")
     cache = np.load(CACHE_PATH, allow_pickle=True)
+    if "labels" not in cache.files:
+        print("Cache is legacy (missing labels). Rebuilding features from raw files.")
+        use_cache = False
+    else:
+        cached_labels = cache["labels"].tolist()
+        if list(cached_labels) != class_names:
+            raise ValueError(
+                f"Cache labels {cached_labels} do not match current labels {class_names}. "
+                "Delete cache or change CLASS_NAMES."
+            )
+if use_cache:
     X = cache["X"]
     y = cache["y"]
 else:
     X, y_labels = [], []
     class_sample_counter = {label: 0 for label in LABELS}
+    skipped_files = []
+    class_target_counts = {}
+    if PAPER_EXACT_MODE:
+        if len(PAPER_CLASS_COUNTS) != len(LABELS):
+            raise ValueError(
+                f"PAPER_CLASS_COUNTS must define {len(LABELS)} counts, got {len(PAPER_CLASS_COUNTS)}."
+            )
+        class_target_counts = {label: PAPER_CLASS_COUNTS[i] for i, label in enumerate(LABELS)}
 
     for label in LABELS:
-        folder = os.path.join(BASE_PATH, label)
-        files = sorted([f for f in os.listdir(folder) if f.endswith(".asc")])
+        files = []
+        if USE_NESTED_GROUPS:
+            for group in dataset_groups:
+                folder = os.path.join(BASE_PATH, group, label)
+                if os.path.isdir(folder):
+                    group_files = sorted(
+                        [
+                            os.path.join(folder, f)
+                            for f in os.listdir(folder)
+                            if f.endswith(".asc")
+                        ]
+                    )
+                    files.extend(group_files)
+        else:
+            folder = os.path.join(BASE_PATH, label)
+            files = sorted(
+                [
+                    os.path.join(folder, f)
+                    for f in os.listdir(folder)
+                    if f.endswith(".asc")
+                ]
+            )
 
-        if PAPER_PROTOCOL_MODE:
-            files = files[:FILES_PER_CLASS]
-        elif MAX_SAMPLES is not None:
-            files = files[:MAX_SAMPLES]
+        if PAPER_EXACT_MODE and label in class_target_counts:
+            files = files[:class_target_counts[label]]
 
         for i, file in enumerate(files):
-            print(f"{label} [{i+1}/{len(files)}] -> {file}")
+            print(f"{label} [{i+1}/{len(files)}] -> {os.path.basename(file)}")
 
-            signal = np.loadtxt(os.path.join(folder, file))
+            try:
+                signal = np.loadtxt(file)
+            except Exception as e:
+                skipped_files.append((file, str(e)))
+                print(f"Skipping unreadable file: {file} | {e}")
+                continue
             signal = preprocess(signal)
-
-            segments = split_signal_segments(signal, SEGMENTS_PER_FILE) if PAPER_PROTOCOL_MODE else [signal]
-            for seg in segments:
-                feats = extract_features(seg)
-                X.append(feats)
-                y_labels.append(label)
-                class_sample_counter[label] += 1
+            feats = extract_features(signal)
+            X.append(feats)
+            y_labels.append(label)
+            class_sample_counter[label] += 1
 
     X = np.array(X)
     y = label_encoder.transform(y_labels)
 
-    print("Samples per class after segmentation:")
+    print("Samples per class before balancing:")
     for lbl in LABELS:
         print(f"{lbl}: {class_sample_counter[lbl]}")
+    if skipped_files:
+        print(f"Skipped {len(skipped_files)} unreadable files.")
+        for fp, err in skipped_files[:5]:
+            print(f" - {fp}: {err}")
 
     if USE_FEATURE_CACHE:
         os.makedirs(CACHE_DIR, exist_ok=True)
-        np.savez_compressed(CACHE_PATH, X=X, y=y)
+        np.savez_compressed(CACHE_PATH, X=X, y=y, labels=np.array(class_names, dtype=object))
         print(f"Saved feature cache to: {CACHE_PATH}")
 
 print("Feature extraction completed.")
@@ -144,95 +259,154 @@ if X.shape[1] != len(all_feature_names):
         f"Feature count mismatch: extracted {X.shape[1]} vs named {len(all_feature_names)}."
     )
 
-if EVAL_MODE == "strict":
-    # Leakage-safe protocol.
-    Xtr_raw, Xte_raw, ytr, yte = train_test_split(
-        X, y,
-        test_size=0.2,
-        stratify=y,
-        random_state=SEED
-    )
-    Xtr_sel, selected_mask = select_features(
-        Xtr_raw, ytr, top_k=TOP_K, return_mask=True, fusion_rule=FUSION_RULE
-    )
-    Xte_sel = Xte_raw[:, selected_mask]
+X_norm, norm_meta = apply_distribution_normalization(X, all_feature_names)
 
-    scaler = StandardScaler()
-    Xtr_scaled = scaler.fit_transform(Xtr_sel)
-    Xte_scaled = scaler.transform(Xte_sel)
+paper_fsf_names = [
+    "Standard Deviation (SD)",
+    "Integrated EMG (IEMG)",
+    "RMS Envelope (RMSE)",
+    "Variance of Central Frequency (VCF)",
+    "Motor Unit Action Potential (MUAP)",
+    "Wavelet Entropy (WE)",
+    "Max Wavelet Coefficient (MWC)",
+    "Total Power (TP)",
+    "Slope Sign Changes (SSC)",
+    "Willison Amplitude (WAMP)",
+    "Turn Count (TC)",
+    "Lempel-Ziv Complexity (LZC)",
+    "Hjorth Activity (HA)",
+    "Hjorth Mobility (HM)",
+    "Hjorth Complexity (HC)",
+]
+
+if PAPER_EXACT_MODE:
+    if PAPER_USE_ALL_FEATURES:
+        selected_mask = np.ones(len(all_feature_names), dtype=bool)
+    else:
+        selected_mask = np.array([name in paper_fsf_names for name in all_feature_names], dtype=bool)
 else:
-    # Paper-reproduction mode: selection/scaling before split.
-    X_sel, selected_mask = select_features(
-        X, y, top_k=TOP_K, return_mask=True, fusion_rule=FUSION_RULE
+    _, selected_mask = select_features(
+        X_norm, y, top_k=TOP_K, return_mask=True, fusion_rule=FUSION_RULE
     )
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_sel)
-    Xtr_scaled, Xte_scaled, ytr, yte = train_test_split(
-        X_scaled, y,
-        test_size=0.2,
-        stratify=y,
-        random_state=SEED
-    )
+
+X_sel = X_norm[:, selected_mask]
+
+smote = SMOTE(
+    sampling_strategy={int(c): SMOTE_TARGET_PER_CLASS for c in class_ids},
+    random_state=SEED,
+    k_neighbors=5,
+)
+X_bal, y_bal = smote.fit_resample(X_sel, y)
+print("Samples per class after SMOTE balancing:")
+for c in class_ids:
+    print(f"{class_names[c]}: {int(np.sum(y_bal == c))}")
+
+Xtr_scaled, Xte_scaled, ytr, yte = train_test_split(
+    X_bal, y_bal,
+    test_size=0.2,
+    stratify=y_bal,
+    random_state=SEED
+)
 
 feature_names = [name for name, keep in zip(all_feature_names, selected_mask) if keep]
-print(f"Selected {len(feature_names)} features via CCFS ({FUSION_RULE}, {EVAL_MODE}):")
+if PAPER_EXACT_MODE and PAPER_USE_ALL_FEATURES:
+    print(f"Selected {len(feature_names)} features for training (paper mode: all features):")
+else:
+    print(f"Selected {len(feature_names)} features for training:")
 print(feature_names)
 
 Xtr = Xtr_scaled.reshape((Xtr_scaled.shape[0], Xtr_scaled.shape[1], 1))
 Xte = Xte_scaled.reshape((Xte_scaled.shape[0], Xte_scaled.shape[1], 1))
+
+# Save a deterministic inference bundle to avoid feature-pipeline drift in app/CLI.
+norm_method = np.array([norm_meta[i][0] for i in range(len(all_feature_names))], dtype=object)
+norm_a = np.zeros(len(all_feature_names), dtype=np.float64)
+norm_b = np.ones(len(all_feature_names), dtype=np.float64)
+for i in range(len(all_feature_names)):
+    method, scaler_i = norm_meta[i]
+    if method == "minmax":
+        norm_a[i] = float(scaler_i.data_min_[0])
+        norm_b[i] = float(scaler_i.data_max_[0])
+    elif method == "robust":
+        norm_a[i] = float(scaler_i.center_[0])
+        norm_b[i] = float(scaler_i.scale_[0])
+    else:
+        norm_a[i] = float(scaler_i.mean_[0])
+        norm_b[i] = float(scaler_i.scale_[0])
+
+np.savez_compressed(
+    PIPELINE_PATH,
+    selected_mask=selected_mask.astype(np.uint8),
+    scaler_mean=np.zeros(np.sum(selected_mask), dtype=np.float64),
+    scaler_scale=np.ones(np.sum(selected_mask), dtype=np.float64),
+    norm_method=norm_method,
+    norm_a=norm_a,
+    norm_b=norm_b,
+    labels=np.array(class_names, dtype=object),
+    feature_names=np.array(feature_names, dtype=object),
+    top_k=np.array([TOP_K], dtype=np.int32),
+    fusion_rule=np.array([FUSION_RULE], dtype=object),
+    eval_mode=np.array([EVAL_MODE], dtype=object),
+    segments_per_file=np.array([1], dtype=np.int32),
+)
+print(f"Saved inference pipeline: {PIPELINE_PATH}")
 
 
 # ---------------- MODEL TRAIN / LOAD ----------------
 history = None
 if TRAIN_MODEL:
     print("Training CNN-LSTM model for current feature pipeline...")
-    class_weights = None
-    if EVAL_MODE == "strict":
-        class_weights_arr = compute_class_weight(
-            class_weight="balanced",
-            classes=np.unique(ytr),
-            y=ytr
-        )
-        class_weights = {int(c): float(w) for c, w in zip(np.unique(ytr), class_weights_arr)}
+    class_weights_arr = compute_class_weight(
+        class_weight="balanced",
+        classes=np.unique(ytr),
+        y=ytr
+    )
+    class_weights = {int(c): float(w) for c, w in zip(np.unique(ytr), class_weights_arr)}
 
     callbacks = []
     if USE_CALLBACKS:
         callbacks = [
-            EarlyStopping(monitor="val_loss", patience=20, restore_best_weights=True),
+            EarlyStopping(monitor="val_accuracy", mode="max", patience=10, restore_best_weights=True),
             ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=8, min_lr=1e-6),
-            ModelCheckpoint(MODEL_PATH, monitor="val_loss", save_best_only=True),
+            ModelCheckpoint(MODEL_PATH, monitor="val_accuracy", mode="max", save_best_only=True),
         ]
 
-    best_acc = -1.0
-    best_history = None
-    best_model = None
-    for trial in range(NUM_TRIALS):
-        set_global_seed(SEED + trial)
-        model_trial = build_model(Xtr.shape[1:], learning_rate=LEARNING_RATE)
-        print(f"Trial {trial+1}/{NUM_TRIALS}")
-        history_trial = model_trial.fit(
-            Xtr,
-            ytr,
+    skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=SEED)
+    cv_scores = []
+    for fold_idx, (tr_idx, va_idx) in enumerate(skf.split(Xtr_scaled, ytr), start=1):
+        X_fold_tr = Xtr_scaled[tr_idx].reshape((-1, Xtr_scaled.shape[1], 1))
+        X_fold_va = Xtr_scaled[va_idx].reshape((-1, Xtr_scaled.shape[1], 1))
+        y_fold_tr = ytr[tr_idx]
+        y_fold_va = ytr[va_idx]
+        fold_model = build_model(Xtr.shape[1:], learning_rate=LEARNING_RATE)
+        fold_model.fit(
+            X_fold_tr,
+            y_fold_tr,
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
             validation_split=VALIDATION_SPLIT,
             class_weight=class_weights,
-            callbacks=callbacks,
-            verbose=1,
+            verbose=0,
         )
-        y_prob_trial = model_trial.predict(Xte, verbose=0)
-        y_pred_trial = np.argmax(y_prob_trial, axis=1)
-        acc_trial = np.mean(y_pred_trial == yte)
-        print(f"Trial accuracy: {acc_trial:.4f}")
-        if acc_trial > best_acc:
-            best_acc = acc_trial
-            best_history = history_trial
-            best_model = model_trial
+        fold_prob = fold_model.predict(X_fold_va, verbose=0)
+        fold_pred = np.argmax(fold_prob, axis=1)
+        fold_acc = float(np.mean(fold_pred == y_fold_va))
+        cv_scores.append(fold_acc)
+        print(f"CV fold {fold_idx}/{CV_FOLDS} accuracy: {fold_acc:.4f}")
+    print(f"CV mean accuracy: {np.mean(cv_scores):.4f} +/- {np.std(cv_scores):.4f}")
 
-    model = best_model
-    history = best_history
+    model = build_model(Xtr.shape[1:], learning_rate=LEARNING_RATE)
+    history = model.fit(
+        Xtr,
+        ytr,
+        epochs=EPOCHS,
+        batch_size=BATCH_SIZE,
+        validation_split=VALIDATION_SPLIT,
+        class_weight=class_weights,
+        callbacks=callbacks,
+        verbose=1,
+    )
     model.save(MODEL_PATH)
-    print(f"Best trial accuracy: {best_acc:.4f}")
     print(f"Model saved to: {MODEL_PATH}")
 else:
     if not os.path.exists(MODEL_PATH):

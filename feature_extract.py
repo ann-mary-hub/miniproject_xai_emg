@@ -166,6 +166,12 @@ def get_feature_names():
 def extract_features(x, fs=4096):
     x = np.asarray(x, dtype=float).ravel()
     features = []
+    # Nonlinear metrics are O(N^2)-like; bound length to avoid memory spikes.
+    if x.size > 4096:
+        step = int(np.ceil(x.size / 4096.0))
+        x_nl = x[::step]
+    else:
+        x_nl = x
 
     # ===== Time-domain =====
     mean_x = np.mean(x)
@@ -220,11 +226,11 @@ def extract_features(x, fs=4096):
     features.extend([rmse, wavelet_entropy, max_wavelet_coeff, ssc])
 
     # ===== Nonlinear =====
-    features.append(sample_entropy(x))
-    features.append(higuchi_fd(x))
-    features.append(lempel_ziv_complexity(x))
+    features.append(sample_entropy(x_nl))
+    features.append(higuchi_fd(x_nl))
+    features.append(lempel_ziv_complexity(x_nl))
 
-    ha, hm, hc = hjorth_parameters(x)
+    ha, hm, hc = hjorth_parameters(x_nl)
     features.extend([ha, hm, hc])
 
     return features

@@ -4,14 +4,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from tensorflow.keras.models import load_model
-from sklearn.preprocessing import StandardScaler
 
 from preprocess import preprocess
-from feature_extract import extract_features, get_feature_names
-from feature_select import select_features
+from feature_extract import extract_features
 
 
-LABELS = ["Healthy", "Myopathy", "Neuropathy"]
+DEFAULT_LABELS = ["Healthy", "Myopathy", "Neuropathy"]
 
 
 def split_signal_segments(signal, n_segments):
@@ -21,18 +19,88 @@ def split_signal_segments(signal, n_segments):
     return [s for s in segments if s.size >= 64]
 
 
-def find_cache_file(cache_dir):
-    if not os.path.isdir(cache_dir):
+def find_pipeline_file(search_dir):
+    if not os.path.isdir(search_dir):
         return None
     files = [
-        os.path.join(cache_dir, f)
-        for f in os.listdir(cache_dir)
-        if f.startswith("feature_cache_") and f.endswith(".npz")
+        os.path.join(search_dir, f)
+        for f in os.listdir(search_dir)
+        if f.endswith("_pipeline.npz")
     ]
     if not files:
         return None
     files.sort(key=os.path.getmtime, reverse=True)
     return files[0]
+
+
+def find_pipeline_files(search_dir):
+    if not os.path.isdir(search_dir):
+        return []
+    files = [
+        os.path.join(search_dir, f)
+        for f in os.listdir(search_dir)
+        if f.endswith("_pipeline.npz")
+    ]
+    files.sort(key=os.path.getmtime, reverse=True)
+    return files
+
+
+def find_model_file(search_dir):
+    if not os.path.isdir(search_dir):
+        return None
+    files = [
+        os.path.join(search_dir, f)
+        for f in os.listdir(search_dir)
+        if f.endswith(".h5")
+    ]
+    if not files:
+        return None
+    files.sort(key=os.path.getmtime, reverse=True)
+    return files[0]
+
+
+def find_preferred_model(search_dir):
+    # Prefer the legacy deltoid+brachii model for your current app use-case.
+    preferred = os.path.join(search_dir, "cnn_lstm_disease_deltoid_brachii.h5")
+    if os.path.exists(preferred):
+        return preferred
+    return find_model_file(search_dir)
+
+
+def peek_default_segments(pipeline_path, fallback=1):
+    try:
+        if not pipeline_path or not os.path.exists(pipeline_path):
+            return fallback
+        pipe = np.load(pipeline_path, allow_pickle=True)
+        if "segments_per_file" in pipe.files:
+            return int(pipe["segments_per_file"][0])
+    except Exception:
+        pass
+    return fallback
+
+
+def peek_pipeline_feature_count(pipeline_path):
+    try:
+        if not pipeline_path or not os.path.exists(pipeline_path):
+            return None
+        pipe = np.load(pipeline_path, allow_pickle=True)
+        if "feature_names" in pipe.files:
+            return int(len(pipe["feature_names"]))
+    except Exception:
+        pass
+    return None
+
+
+def find_compatible_pipeline(model_expected_len, search_dir, preferred_path=None):
+    candidates = []
+    if preferred_path:
+        candidates.append(preferred_path)
+    candidates.extend([p for p in find_pipeline_files(search_dir) if p != preferred_path])
+    for p in candidates:
+        feat_len = peek_pipeline_feature_count(p)
+        if feat_len == int(model_expected_len):
+            return p
+    return None
 
 
 @st.cache_resource
@@ -41,23 +109,82 @@ def load_keras_model(model_path):
 
 
 @st.cache_data
-def build_inference_pipeline(cache_path, top_k, fusion_rule):
-    cache = np.load(cache_path, allow_pickle=True)
-    X = cache["X"]
-    y = cache["y"]
+def load_inference_pipeline(pipeline_path):
+    pipe = np.load(pipeline_path, allow_pickle=True)
+    required = ["selected_mask", "scaler_mean", "scaler_scale", "feature_names", "labels"]
+    missing = [k for k in required if k not in pipe.files]
+    if missing:
+        raise ValueError(f"Invalid pipeline bundle. Missing keys: {missing}")
 
-    all_feature_names = get_feature_names()
-    if X.shape[1] != len(all_feature_names):
-        raise ValueError(
-            f"Feature count mismatch in cache: {X.shape[1]} vs {len(all_feature_names)} names."
-        )
-
-    X_sel, selected_mask = select_features(
-        X, y, top_k=top_k, return_mask=True, fusion_rule=fusion_rule
+    selected_mask = pipe["selected_mask"].astype(bool)
+    scaler_mean = pipe["scaler_mean"].astype(float)
+    scaler_scale = pipe["scaler_scale"].astype(float)
+    scaler_scale = np.where(scaler_scale == 0.0, 1.0, scaler_scale)
+    selected_names = pipe["feature_names"].tolist()
+    labels = pipe["labels"].tolist() if "labels" in pipe.files else DEFAULT_LABELS
+    default_segments = int(pipe["segments_per_file"][0]) if "segments_per_file" in pipe.files else 1
+    norm_method = pipe["norm_method"].tolist() if "norm_method" in pipe.files else None
+    norm_a = pipe["norm_a"].astype(float) if "norm_a" in pipe.files else None
+    norm_b = pipe["norm_b"].astype(float) if "norm_b" in pipe.files else None
+    return (
+        selected_mask,
+        scaler_mean,
+        scaler_scale,
+        selected_names,
+        labels,
+        default_segments,
+        norm_method,
+        norm_a,
+        norm_b,
     )
-    scaler = StandardScaler().fit(X_sel)
-    selected_names = [n for n, keep in zip(all_feature_names, selected_mask) if keep]
-    return selected_mask, scaler, selected_names
+
+
+def normalize_features(feats, scaler_mean, scaler_scale, norm_method=None, norm_a=None, norm_b=None):
+    if norm_method is None or norm_a is None or norm_b is None:
+        return (feats - scaler_mean) / scaler_scale
+
+    feats_n = feats.astype(float).copy()
+    for i, method in enumerate(norm_method):
+        col = feats_n[:, i]
+        if method == "minmax":
+            denom = (norm_b[i] - norm_a[i]) if (norm_b[i] - norm_a[i]) != 0 else 1.0
+            feats_n[:, i] = (col - norm_a[i]) / denom
+        elif method == "robust":
+            denom = norm_b[i] if norm_b[i] != 0 else 1.0
+            feats_n[:, i] = (col - norm_a[i]) / denom
+        else:
+            denom = norm_b[i] if norm_b[i] != 0 else 1.0
+            feats_n[:, i] = (col - norm_a[i]) / denom
+    return feats_n
+
+
+def transform_with_pipeline(
+    feats,
+    selected_mask,
+    scaler_mean,
+    scaler_scale,
+    norm_method=None,
+    norm_a=None,
+    norm_b=None,
+):
+    if norm_method is not None and norm_a is not None and norm_b is not None:
+        feats_norm = normalize_features(feats, scaler_mean, scaler_scale, norm_method, norm_a, norm_b)
+        return feats_norm[:, selected_mask]
+
+    full_dim = feats.shape[1]
+    scaler_dim = int(np.asarray(scaler_mean).shape[0])
+    sel_dim = int(np.sum(selected_mask))
+
+    if scaler_dim == full_dim:
+        feats_norm = normalize_features(feats, scaler_mean, scaler_scale, None, None, None)
+        return feats_norm[:, selected_mask]
+    if scaler_dim == sel_dim:
+        feats_sel = feats[:, selected_mask]
+        return normalize_features(feats_sel, scaler_mean, scaler_scale, None, None, None)
+
+    raise ValueError(
+        f"Incompatible pipeline dimensions: full={full_dim}, selected={sel_dim}, scaler={scaler_dim}"
+    )
 
 
 def local_occlusion_explanation(model, x_scaled, pred_idx, feature_names, top_n=8):
@@ -93,14 +220,12 @@ def main():
     st.title("EMG File Prediction and Explanation")
     st.write("Upload an `.asc` EMG file to get class prediction and a human-readable reason report.")
 
-    default_cache = find_cache_file("cache")
+    default_pipeline = find_pipeline_file(".")
+    default_model = find_preferred_model(".")
     with st.sidebar:
         st.header("Settings")
-        model_path = st.text_input("Model path", value="cnn_lstm_emg_paper28.h5")
-        cache_path = st.text_input("Cache path", value=default_cache or "")
-        top_k = st.number_input("Top-K features", min_value=1, max_value=50, value=20, step=1)
-        fusion_rule = st.selectbox("Fusion rule", options=["union", "vote2", "intersection"], index=0)
-        segments_per_file = st.number_input("Segments per file", min_value=1, max_value=20, value=8, step=1)
+        model_path = st.text_input("Model path", value=default_model or "cnn_lstm_emg_paper28.h5")
+        pipeline_path = st.text_input("Pipeline path", value=default_pipeline or "")
 
     uploaded = st.file_uploader("Upload EMG .asc file", type=["asc"])
     if uploaded is None:
@@ -110,17 +235,40 @@ def main():
     if not model_path or not os.path.exists(model_path):
         st.error(f"Model file not found: {model_path}")
         return
-    if not cache_path or not os.path.exists(cache_path):
-        st.error("Cache file not found. Run `main_driver.py` first to generate feature cache.")
+    if not pipeline_path or not os.path.exists(pipeline_path):
+        st.error("Pipeline file not found. Run `main_driver.py` first to generate *_pipeline.npz.")
         return
 
     try:
         model = load_keras_model(model_path)
-        selected_mask, scaler, selected_names = build_inference_pipeline(
-            cache_path=cache_path,
-            top_k=int(top_k),
-            fusion_rule=fusion_rule,
-        )
+        model_expected = int(model.input_shape[1])
+        pipeline_feature_len = peek_pipeline_feature_count(pipeline_path)
+        if pipeline_feature_len != model_expected:
+            compatible = find_compatible_pipeline(
+                model_expected_len=model_expected,
+                search_dir=".",
+                preferred_path=pipeline_path,
+            )
+            if compatible is None:
+                st.error(
+                    "No compatible pipeline found for this model. "
+                    f"Model expects {model_expected} features, selected pipeline has "
+                    f"{pipeline_feature_len if pipeline_feature_len is not None else 'unknown'}."
+                )
+                return
+            pipeline_path = compatible
+
+        (
+            selected_mask,
+            scaler_mean,
+            scaler_scale,
+            selected_names,
+            labels,
+            default_segments,
+            norm_method,
+            norm_a,
+            norm_b,
+        ) = load_inference_pipeline(pipeline_path=pipeline_path)
     except Exception as e:
         st.error(f"Failed to load model/pipeline: {e}")
         return
@@ -133,6 +281,10 @@ def main():
         )
         return
 
+    # Always use the pipeline-defined segment count to keep inference consistent with training.
+    segments_per_file = int(default_segments)
+    st.sidebar.caption(f"Using pipeline segments_per_file = {segments_per_file}")
+
     try:
         raw_signal = parse_uploaded_asc(uploaded)
         pre_signal = preprocess(raw_signal)
@@ -142,8 +294,15 @@ def main():
             return
 
         feats = np.array([extract_features(seg) for seg in segments], dtype=float)
-        feats_sel = feats[:, selected_mask]
-        feats_scaled = scaler.transform(feats_sel)
+        feats_scaled = transform_with_pipeline(
+            feats,
+            selected_mask,
+            scaler_mean,
+            scaler_scale,
+            norm_method,
+            norm_a,
+            norm_b,
+        )
     except Exception as e:
         st.error(f"Failed to process uploaded file: {e}")
         return
@@ -153,14 +312,14 @@ def main():
     )
     probs = probs_per_seg.mean(axis=0)
     pred_idx = int(np.argmax(probs))
-    pred_label = LABELS[pred_idx]
+    pred_label = labels[pred_idx]
 
     st.subheader("Prediction")
     c1, c2 = st.columns(2)
     c1.metric("Predicted Class", pred_label)
     c2.metric("Confidence", f"{probs[pred_idx] * 100:.2f}%")
 
-    prob_df = pd.DataFrame({"Class": LABELS, "Probability": probs})
+    prob_df = pd.DataFrame({"Class": labels, "Probability": probs})
     st.bar_chart(prob_df.set_index("Class"))
 
     # Local explanation based on average feature vector over segments.
