@@ -503,5 +503,5 @@ if history is not None:
 if RUN_EXPLAINABILITY:
     run_pfi(model, Xte, yte, feature_names)
     run_shap(model, Xte, feature_names)
-    # run_lime(model, Xte, feature_names)   # optional (slow)
+    run_lime(model, Xte, feature_names)   # optional (slow)
     run_pdp(model, Xte, feature_names)

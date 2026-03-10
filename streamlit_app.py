@@ -7,6 +7,11 @@ from tensorflow.keras.models import load_model
 
 from preprocess import preprocess
 from feature_extract import extract_features
+from innovation import (
+    compute_mdri,
+    build_counterfactual_suggestions,
+    generate_medical_report_pdf,
+)
 
 
 DEFAULT_LABELS = ["Healthy", "Myopathy", "Neuropathy"]
@@ -332,6 +337,14 @@ def main():
         top_n=8,
     )
 
+    mdri_result = compute_mdri(labels=labels, probs=probs, contrib=contrib)
+    cf_suggestions = build_counterfactual_suggestions(
+        feature_names=selected_names,
+        x_scaled=x_explain,
+        contrib=contrib,
+        max_items=5,
+    )
+
     st.subheader("Why This Prediction?")
     st.write(
         f"The model predicted **{pred_label}** because the following features had the strongest "
@@ -341,6 +354,47 @@ def main():
 
     st.caption(
         "Positive contribution supports the predicted class; negative contribution opposes it."
+    )
+
+    st.subheader("Muscle Degeneration Risk Index (MDRI)")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("MDRI Score", f"{mdri_result['mdri']:.2f}/100")
+    m2.metric("Risk Level", mdri_result["risk_level"])
+    m3.metric("Pathology Probability", f"{mdri_result['pathology_probability'] * 100:.2f}%")
+
+    st.progress(int(round(mdri_result["mdri"])))
+
+    st.subheader("Counterfactual Health Suggestions")
+    if cf_suggestions:
+        cf_df = pd.DataFrame(cf_suggestions)
+        show_df = cf_df.rename(
+            columns={
+                "feature": "Feature",
+                "current_z": "Current (z)",
+                "recommended_delta_z": "Recommended Change (z)",
+                "action": "Direction",
+                "expected_risk_reduction_pct": "Expected MDRI Reduction (%)",
+            }
+        )
+        st.dataframe(show_df, use_container_width=True)
+    else:
+        st.info("No strong corrective counterfactual is needed for this sample.")
+
+    pdf_bytes = generate_medical_report_pdf(
+        file_name=uploaded.name,
+        labels=labels,
+        probs=probs,
+        predicted_label=pred_label,
+        confidence=float(probs[pred_idx]),
+        mdri_result=mdri_result,
+        top_feature_df=local_df,
+        counterfactual_suggestions=cf_suggestions,
+    )
+    st.download_button(
+        label="Download Personalized Medical Report (PDF)",
+        data=pdf_bytes,
+        file_name=f"EMG_report_{os.path.splitext(uploaded.name)[0]}.pdf",
+        mime="application/pdf",
     )
 
     with st.expander("Signal preview"):
