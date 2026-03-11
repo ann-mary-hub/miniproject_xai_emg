@@ -1,5 +1,7 @@
 ﻿import os
 import random
+import sys
+import json
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 import numpy as np
@@ -26,6 +28,12 @@ from imblearn.over_sampling import SMOTE
 from tensorflow.keras.models import load_model
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
+# Avoid Windows console encoding issues when filenames contain non-ASCII chars.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 # ---------------- CONFIG ----------------
 SEED = 42
@@ -40,7 +48,7 @@ LABELS_ENV = os.getenv("CLASS_NAMES", "").strip()
 LABELS = [x.strip() for x in LABELS_ENV.split(",") if x.strip()] if LABELS_ENV else []
 EVAL_MODE = os.getenv("EVAL_MODE", "paper_reproduction")  # "paper_reproduction" or "strict"
 FUSION_RULE = os.getenv("FUSION_RULE", "union")  # "intersection", "vote2", "union"
-TOP_K = int(os.getenv("TOP_K", "28"))
+TOP_K = int(os.getenv("TOP_K", "15"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
 EPOCHS = int(os.getenv("EPOCHS", "50"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "16"))
@@ -50,14 +58,26 @@ RUN_EXPLAINABILITY = os.getenv("RUN_EXPLAINABILITY", "1") == "1"
 NUM_TRIALS = int(os.getenv("NUM_TRIALS", "1"))
 ENSEMBLE_TOP_N = int(os.getenv("ENSEMBLE_TOP_N", "1"))
 PAPER_EXACT_MODE = os.getenv("PAPER_EXACT_MODE", "1") == "1"
-PAPER_USE_ALL_FEATURES = os.getenv("PAPER_USE_ALL_FEATURES", "1") == "1"
+PAPER_USE_ALL_FEATURES = os.getenv("PAPER_USE_ALL_FEATURES", "0") == "1"
 PAPER_CLASS_COUNTS = [int(x) for x in os.getenv("PAPER_CLASS_COUNTS", "50,98,93").split(",")]
 SMOTE_TARGET_PER_CLASS = int(os.getenv("SMOTE_TARGET_PER_CLASS", "200"))
+# Paper protocol: SMOTE to 200 samples/class before 80:20 stratified split.
+USE_SMOTE = os.getenv("USE_SMOTE", "1") == "1"
+USE_DETERMINISTIC_SPLIT = os.getenv("USE_DETERMINISTIC_SPLIT", "1") == "1"
+TEST_SPLIT = float(os.getenv("TEST_SPLIT", "0.2"))
+SPLIT_SEED = int(os.getenv("SPLIT_SEED", "42"))
+SMOTE_SCOPE = os.getenv("SMOTE_SCOPE", "train" if USE_DETERMINISTIC_SPLIT else "all")
+USE_WINDOW_SEGMENTATION = os.getenv("USE_WINDOW_SEGMENTATION", "1") == "1"
+WINDOW_SEC = float(os.getenv("WINDOW_SEC", "1.0"))
+WINDOW_OVERLAP = float(os.getenv("WINDOW_OVERLAP", "0.0"))
 CV_FOLDS = int(os.getenv("CV_FOLDS", "5"))
 
 USE_FEATURE_CACHE = True
 CACHE_DIR = "cache"
-CACHE_VERSION = f"paper28_exact_{EVAL_MODE}_{FUSION_RULE}_k{TOP_K}_smote{SMOTE_TARGET_PER_CLASS}"
+CACHE_VERSION = (
+    f"paper28_exact_{EVAL_MODE}_{FUSION_RULE}_k{TOP_K}_smote{SMOTE_TARGET_PER_CLASS}"
+    f"_win{WINDOW_SEC}_ov{WINDOW_OVERLAP}_seg{int(USE_WINDOW_SEGMENTATION)}"
+)
 CACHE_PATH = os.path.join(
     CACHE_DIR,
     f"feature_cache_{CACHE_VERSION}.npz"
@@ -122,6 +142,21 @@ def apply_saved_normalization(X, norm_meta):
 
 set_global_seed(SEED)
 
+
+def segment_signal(x, fs, win_sec, overlap):
+    if win_sec <= 0:
+        return [x]
+    win_len = int(round(win_sec * fs))
+    if win_len <= 1 or len(x) < win_len:
+        return []
+    step = int(round(win_len * (1.0 - overlap)))
+    if step <= 0:
+        step = win_len
+    segments = []
+    for start in range(0, len(x) - win_len + 1, step):
+        segments.append(x[start:start + win_len])
+    return segments
+
 top_level_dirs = sorted(
     [d for d in os.listdir(BASE_PATH) if os.path.isdir(os.path.join(BASE_PATH, d))]
 )
@@ -166,8 +201,8 @@ use_cache = USE_FEATURE_CACHE and os.path.exists(CACHE_PATH)
 if use_cache:
     print(f"Loading cached features from: {CACHE_PATH}")
     cache = np.load(CACHE_PATH, allow_pickle=True)
-    if "labels" not in cache.files:
-        print("Cache is legacy (missing labels). Rebuilding features from raw files.")
+    if "labels" not in cache.files or "files" not in cache.files:
+        print("Cache is legacy (missing labels/files). Rebuilding features from raw files.")
         use_cache = False
     else:
         cached_labels = cache["labels"].tolist()
@@ -179,8 +214,13 @@ if use_cache:
 if use_cache:
     X = cache["X"]
     y = cache["y"]
+    file_paths = cache["files"].tolist()
+    if "base_files" in cache.files:
+        base_paths = cache["base_files"].tolist()
+    else:
+        base_paths = list(file_paths)
 else:
-    X, y_labels = [], []
+    X, y_labels, file_paths, base_paths = [], [], [], []
     class_sample_counter = {label: 0 for label in LABELS}
     skipped_files = []
     class_target_counts = {}
@@ -215,10 +255,10 @@ else:
                 ]
             )
 
-        if PAPER_EXACT_MODE and label in class_target_counts:
-            files = files[:class_target_counts[label]]
-
+        target_count = class_target_counts.get(label) if PAPER_EXACT_MODE else None
         for i, file in enumerate(files):
+            if target_count is not None and class_sample_counter[label] >= target_count:
+                break
             print(f"{label} [{i+1}/{len(files)}] -> {os.path.basename(file)}")
 
             try:
@@ -228,10 +268,24 @@ else:
                 print(f"Skipping unreadable file: {file} | {e}")
                 continue
             signal = preprocess(signal)
-            feats = extract_features(signal)
-            X.append(feats)
-            y_labels.append(label)
-            class_sample_counter[label] += 1
+            if USE_WINDOW_SEGMENTATION:
+                segments = segment_signal(signal, 4096, WINDOW_SEC, WINDOW_OVERLAP)
+                if not segments:
+                    continue
+                for seg_idx, seg in enumerate(segments):
+                    feats = extract_features(seg)
+                    X.append(feats)
+                    y_labels.append(label)
+                    file_paths.append(f"{file}::seg{seg_idx}")
+                    base_paths.append(file)
+                    class_sample_counter[label] += 1
+            else:
+                feats = extract_features(signal)
+                X.append(feats)
+                y_labels.append(label)
+                file_paths.append(file)
+                base_paths.append(file)
+                class_sample_counter[label] += 1
 
     X = np.array(X)
     y = label_encoder.transform(y_labels)
@@ -246,7 +300,14 @@ else:
 
     if USE_FEATURE_CACHE:
         os.makedirs(CACHE_DIR, exist_ok=True)
-        np.savez_compressed(CACHE_PATH, X=X, y=y, labels=np.array(class_names, dtype=object))
+        np.savez_compressed(
+            CACHE_PATH,
+            X=X,
+            y=y,
+            labels=np.array(class_names, dtype=object),
+            files=np.array(file_paths, dtype=object),
+            base_files=np.array(base_paths, dtype=object),
+        )
         print(f"Saved feature cache to: {CACHE_PATH}")
 
 print("Feature extraction completed.")
@@ -291,22 +352,105 @@ else:
 
 X_sel = X_norm[:, selected_mask]
 
-smote = SMOTE(
-    sampling_strategy={int(c): SMOTE_TARGET_PER_CLASS for c in class_ids},
-    random_state=SEED,
-    k_neighbors=5,
-)
-X_bal, y_bal = smote.fit_resample(X_sel, y)
-print("Samples per class after SMOTE balancing:")
-for c in class_ids:
-    print(f"{class_names[c]}: {int(np.sum(y_bal == c))}")
+if USE_DETERMINISTIC_SPLIT and SMOTE_SCOPE != "train":
+    print("Deterministic file split forces SMOTE_SCOPE='train' to preserve file lists.")
+    SMOTE_SCOPE = "train"
 
-Xtr_scaled, Xte_scaled, ytr, yte = train_test_split(
-    X_bal, y_bal,
-    test_size=0.2,
-    stratify=y_bal,
-    random_state=SEED
-)
+def _deterministic_split_indices(labels, test_size, seed):
+    rng = np.random.RandomState(seed)
+    labels = np.asarray(labels)
+    train_idx, test_idx = [], []
+    for c in np.unique(labels):
+        idx = np.where(labels == c)[0]
+        rng.shuffle(idx)
+        n_test = int(np.round(len(idx) * test_size))
+        n_test = max(1, min(n_test, len(idx) - 1))
+        test_idx.extend(idx[:n_test])
+        train_idx.extend(idx[n_test:])
+    return np.array(train_idx), np.array(test_idx)
+
+
+def _deterministic_group_split(labels, groups, test_size, seed):
+    rng = np.random.RandomState(seed)
+    labels = np.asarray(labels)
+    groups = np.asarray(groups)
+    train_idx, test_idx = [], []
+    for c in np.unique(labels):
+        idx = np.where(labels == c)[0]
+        class_groups = np.unique(groups[idx])
+        rng.shuffle(class_groups)
+        n_test = int(np.round(len(class_groups) * test_size))
+        n_test = max(1, min(n_test, len(class_groups) - 1))
+        test_groups = set(class_groups[:n_test])
+        for i in idx:
+            if groups[i] in test_groups:
+                test_idx.append(i)
+            else:
+                train_idx.append(i)
+    return np.array(train_idx), np.array(test_idx)
+
+if USE_DETERMINISTIC_SPLIT:
+    if USE_WINDOW_SEGMENTATION:
+        train_idx, test_idx = _deterministic_group_split(y, base_paths, TEST_SPLIT, SPLIT_SEED)
+    else:
+        train_idx, test_idx = _deterministic_split_indices(y, TEST_SPLIT, SPLIT_SEED)
+    split_meta = {
+        "seed": SPLIT_SEED,
+        "test_split": TEST_SPLIT,
+        "train_files": [file_paths[i] for i in train_idx],
+        "test_files": [file_paths[i] for i in test_idx],
+    }
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    split_path = os.path.join(RESULTS_DIR, "split_files.json")
+    with open(split_path, "w", encoding="utf-8") as f:
+        json.dump(split_meta, f, indent=2)
+    print(f"Saved deterministic split list: {split_path}")
+
+    Xtr_raw, ytr_raw = X_sel[train_idx], y[train_idx]
+    Xte_raw, yte_raw = X_sel[test_idx], y[test_idx]
+else:
+    Xtr_raw, Xte_raw, ytr_raw, yte_raw = train_test_split(
+        X_sel, y,
+        test_size=TEST_SPLIT,
+        stratify=y,
+        random_state=SPLIT_SEED,
+    )
+
+if USE_SMOTE:
+    smote = SMOTE(
+        sampling_strategy={int(c): SMOTE_TARGET_PER_CLASS for c in class_ids},
+        random_state=SEED,
+        k_neighbors=5,
+    )
+    if SMOTE_SCOPE == "all" and not USE_DETERMINISTIC_SPLIT:
+        X_bal, y_bal = smote.fit_resample(X_sel, y)
+        Xtr_scaled, Xte_scaled, ytr, yte = train_test_split(
+            X_bal, y_bal,
+            test_size=TEST_SPLIT,
+            stratify=y_bal,
+            random_state=SPLIT_SEED,
+        )
+        print("Samples per class after SMOTE (before split):")
+        for c in class_ids:
+            print(f"{class_names[c]}: {int(np.sum(y_bal == c))}")
+        print("Samples per class after 80/20 split (train):")
+        for c in class_ids:
+            print(f"{class_names[c]}: {int(np.sum(ytr == c))}")
+        print("Samples per class after 80/20 split (test):")
+        for c in class_ids:
+            print(f"{class_names[c]}: {int(np.sum(yte == c))}")
+        # Skip the generic print below in this branch.
+        ytr_counts_printed = True
+    else:
+        Xtr_scaled, ytr = smote.fit_resample(Xtr_raw, ytr_raw)
+        Xte_scaled, yte = Xte_raw, yte_raw
+    if "ytr_counts_printed" not in locals():
+        print("Samples per class after SMOTE balancing (train set):")
+        for c in class_ids:
+            print(f"{class_names[c]}: {int(np.sum(ytr == c))}")
+else:
+    Xtr_scaled, Xte_scaled, ytr, yte = Xtr_raw, Xte_raw, ytr_raw, yte_raw
+    print("SMOTE disabled; using original class distribution.")
 
 feature_names = [name for name, keep in zip(all_feature_names, selected_mask) if keep]
 if PAPER_EXACT_MODE and PAPER_USE_ALL_FEATURES:
@@ -334,6 +478,7 @@ for i in range(len(all_feature_names)):
         norm_a[i] = float(scaler_i.mean_[0])
         norm_b[i] = float(scaler_i.scale_[0])
 
+segments_per_file_meta = -1 if USE_WINDOW_SEGMENTATION else 1
 np.savez_compressed(
     PIPELINE_PATH,
     selected_mask=selected_mask.astype(np.uint8),
@@ -347,7 +492,7 @@ np.savez_compressed(
     top_k=np.array([TOP_K], dtype=np.int32),
     fusion_rule=np.array([FUSION_RULE], dtype=object),
     eval_mode=np.array([EVAL_MODE], dtype=object),
-    segments_per_file=np.array([1], dtype=np.int32),
+    segments_per_file=np.array([segments_per_file_meta], dtype=np.int32),
 )
 print(f"Saved inference pipeline: {PIPELINE_PATH}")
 
@@ -447,6 +592,11 @@ print(report)
 with open(REPORT_PATH, "w", encoding="utf-8") as f:
     f.write(report)
 
+# Multiclass Brier score: mean over samples of sum_k (p_k - y_k)^2.
+y_onehot = np.zeros((yte.shape[0], len(class_ids)), dtype=np.float64)
+y_onehot[np.arange(yte.shape[0]), yte] = 1.0
+brier_score = float(np.mean(np.sum((y_prob - y_onehot) ** 2, axis=1)))
+
 # Paper-reported aggregate metrics for easier comparison.
 acc = np.mean(y_pred == yte)
 kappa = cohen_kappa_score(yte, y_pred)
@@ -457,6 +607,7 @@ metrics_summary = (
     f"Cohen's Kappa: {kappa:.4f}\n"
     f"MCC: {mcc:.4f}\n"
     f"AUC (OvO): {auc_ovo:.4f}\n"
+    f"Brier Score (multiclass): {brier_score:.6f}\n"
 )
 print(metrics_summary)
 with open(REPORT_PATH, "a", encoding="utf-8") as f:
@@ -505,3 +656,6 @@ if RUN_EXPLAINABILITY:
     run_shap(model, Xte, feature_names)
     run_lime(model, Xte, feature_names)   # optional (slow)
     run_pdp(model, Xte, feature_names)
+
+
+

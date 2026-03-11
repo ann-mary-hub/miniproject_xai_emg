@@ -1,14 +1,15 @@
               precision    recall  f1-score   support
 
-     Healthy     0.8696    1.0000    0.9302        40
-    Myopathy     0.9722    0.8750    0.9211        40
-  Neuropathy     0.9474    0.9000    0.9231        40
+     Healthy     0.9302    1.0000    0.9639        40
+    Myopathy     0.9487    0.9250    0.9367        40
+  Neuropathy     1.0000    0.9500    0.9744        40
 
-    accuracy                         0.9250       120
-   macro avg     0.9297    0.9250    0.9248       120
-weighted avg     0.9297    0.9250    0.9248       120
+    accuracy                         0.9583       120
+   macro avg     0.9597    0.9583    0.9583       120
+weighted avg     0.9597    0.9583    0.9583       120
 
-Accuracy: 0.9250
-Cohen's Kappa: 0.8875
-MCC: 0.8901
-AUC (OvO): 0.9868
+Accuracy: 0.9583
+Cohen's Kappa: 0.9375
+MCC: 0.9382
+AUC (OvO): 0.9964
+Brier Score (multiclass): 0.075570
