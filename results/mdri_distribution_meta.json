@@ -1,0 +1,12 @@
+{
+  "cache_path": "cache\\feature_cache_paper28_exact_paper_reproduction_union_k15_smote200_win1.0_ov0.0_seg1.npz",
+  "model_path": "cnn_lstm_emg_paper28.h5",
+  "plot": "hist",
+  "test_split": 0.2,
+  "split_seed": 42,
+  "use_smote": true,
+  "smote_scope": "all",
+  "paper_exact_mode": true,
+  "paper_use_all_features": false,
+  "top_k": 15
+}

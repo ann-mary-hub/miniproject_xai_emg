@@ -1,0 +1,25 @@
+true_label,feature,mean_abs_change
+Healthy,Standard Deviation (SD),0.007305
+Healthy,Integrated EMG (IEMG),0.003071
+Healthy,Turn Count (TC),0.496733
+Healthy,Willison Amplitude (WAMP),0.045447
+Healthy,Motor Unit Action Potential (MUAP),0.007762
+Healthy,Total Power (TP),0.039508
+Healthy,Variance of Central Frequency (VCF),0.026535
+Healthy,RMS Envelope (RMSE),1.942660
+Myopathy,Standard Deviation (SD),0.518269
+Myopathy,Integrated EMG (IEMG),1.823703
+Myopathy,Turn Count (TC),4.079941
+Myopathy,Willison Amplitude (WAMP),2.236169
+Myopathy,Motor Unit Action Potential (MUAP),2.033167
+Myopathy,Total Power (TP),1.871660
+Myopathy,Variance of Central Frequency (VCF),3.886288
+Myopathy,RMS Envelope (RMSE),1.637707
+Neuropathy,Standard Deviation (SD),1.941019
+Neuropathy,Integrated EMG (IEMG),0.379458
+Neuropathy,Turn Count (TC),0.785782
+Neuropathy,Willison Amplitude (WAMP),1.443915
+Neuropathy,Motor Unit Action Potential (MUAP),3.501059
+Neuropathy,Total Power (TP),1.091135
+Neuropathy,Variance of Central Frequency (VCF),2.210947
+Neuropathy,RMS Envelope (RMSE),1.664950

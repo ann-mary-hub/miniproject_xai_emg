@@ -48,29 +48,38 @@ LABELS_ENV = os.getenv("CLASS_NAMES", "").strip()
 LABELS = [x.strip() for x in LABELS_ENV.split(",") if x.strip()] if LABELS_ENV else []
 EVAL_MODE = os.getenv("EVAL_MODE", "paper_reproduction")  # "paper_reproduction" or "strict"
 FUSION_RULE = os.getenv("FUSION_RULE", "union")  # "intersection", "vote2", "union"
-TOP_K = int(os.getenv("TOP_K", "15"))
+TOP_K = 15
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "1e-3"))
 EPOCHS = int(os.getenv("EPOCHS", "50"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "16"))
 VALIDATION_SPLIT = float(os.getenv("VALIDATION_SPLIT", "0.1"))
 USE_CALLBACKS = os.getenv("USE_CALLBACKS", "0") == "1"
-RUN_EXPLAINABILITY = os.getenv("RUN_EXPLAINABILITY", "1") == "1"
+RUN_EXPLAINABILITY = True
 NUM_TRIALS = int(os.getenv("NUM_TRIALS", "1"))
 ENSEMBLE_TOP_N = int(os.getenv("ENSEMBLE_TOP_N", "1"))
-PAPER_EXACT_MODE = os.getenv("PAPER_EXACT_MODE", "1") == "1"
-PAPER_USE_ALL_FEATURES = os.getenv("PAPER_USE_ALL_FEATURES", "0") == "1"
+PAPER_EXACT_MODE = True
+PAPER_USE_ALL_FEATURES = False
 PAPER_CLASS_COUNTS = [int(x) for x in os.getenv("PAPER_CLASS_COUNTS", "50,98,93").split(",")]
 SMOTE_TARGET_PER_CLASS = int(os.getenv("SMOTE_TARGET_PER_CLASS", "200"))
 # Paper protocol: SMOTE to 200 samples/class before 80:20 stratified split.
-USE_SMOTE = os.getenv("USE_SMOTE", "1") == "1"
-USE_DETERMINISTIC_SPLIT = os.getenv("USE_DETERMINISTIC_SPLIT", "1") == "1"
+USE_SMOTE = True
+USE_DETERMINISTIC_SPLIT = False
 TEST_SPLIT = float(os.getenv("TEST_SPLIT", "0.2"))
 SPLIT_SEED = int(os.getenv("SPLIT_SEED", "42"))
-SMOTE_SCOPE = os.getenv("SMOTE_SCOPE", "train" if USE_DETERMINISTIC_SPLIT else "all")
-USE_WINDOW_SEGMENTATION = os.getenv("USE_WINDOW_SEGMENTATION", "1") == "1"
-WINDOW_SEC = float(os.getenv("WINDOW_SEC", "1.0"))
-WINDOW_OVERLAP = float(os.getenv("WINDOW_OVERLAP", "0.0"))
+SMOTE_SCOPE = "all"
+USE_WINDOW_SEGMENTATION = True
+WINDOW_SEC = 1.0
+WINDOW_OVERLAP = 0.0
 CV_FOLDS = int(os.getenv("CV_FOLDS", "5"))
+SKIP_CV = os.getenv("SKIP_CV", "0") == "1"
+
+# Paper-accuracy guardrails: enforce the paper protocol unless explicitly disabled.
+PAPER_LOCK = False
+if PAPER_EXACT_MODE and PAPER_LOCK:
+    PAPER_USE_ALL_FEATURES = False
+    USE_WINDOW_SEGMENTATION = False
+    USE_DETERMINISTIC_SPLIT = False
+    SMOTE_SCOPE = "all"
 
 USE_FEATURE_CACHE = True
 CACHE_DIR = "cache"
@@ -418,12 +427,20 @@ else:
 
 if USE_SMOTE:
     smote = SMOTE(
-        sampling_strategy={int(c): SMOTE_TARGET_PER_CLASS for c in class_ids},
+        sampling_strategy=None,
         random_state=SEED,
         k_neighbors=5,
     )
     if SMOTE_SCOPE == "all" and not USE_DETERMINISTIC_SPLIT:
-        X_bal, y_bal = smote.fit_resample(X_sel, y)
+        # Ensure SMOTE target is not below existing class counts.
+        class_counts = {int(c): int(np.sum(y == c)) for c in class_ids}
+        target = {c: max(class_counts[c], SMOTE_TARGET_PER_CLASS) for c in class_counts}
+        if all(target[c] == class_counts[c] for c in class_counts):
+            print("SMOTE skipped (all classes already >= target).")
+            X_bal, y_bal = X_sel, y
+        else:
+            smote.set_params(sampling_strategy=target)
+            X_bal, y_bal = smote.fit_resample(X_sel, y)
         Xtr_scaled, Xte_scaled, ytr, yte = train_test_split(
             X_bal, y_bal,
             test_size=TEST_SPLIT,
@@ -442,7 +459,14 @@ if USE_SMOTE:
         # Skip the generic print below in this branch.
         ytr_counts_printed = True
     else:
-        Xtr_scaled, ytr = smote.fit_resample(Xtr_raw, ytr_raw)
+        class_counts = {int(c): int(np.sum(ytr_raw == c)) for c in class_ids}
+        target = {c: max(class_counts[c], SMOTE_TARGET_PER_CLASS) for c in class_counts}
+        if all(target[c] == class_counts[c] for c in class_counts):
+            print("SMOTE skipped (train classes already >= target).")
+            Xtr_scaled, ytr = Xtr_raw, ytr_raw
+        else:
+            smote.set_params(sampling_strategy=target)
+            Xtr_scaled, ytr = smote.fit_resample(Xtr_raw, ytr_raw)
         Xte_scaled, yte = Xte_raw, yte_raw
     if "ytr_counts_printed" not in locals():
         print("Samples per class after SMOTE balancing (train set):")
@@ -498,85 +522,116 @@ print(f"Saved inference pipeline: {PIPELINE_PATH}")
 
 
 # ---------------- MODEL TRAIN / LOAD ----------------
-history = None
-if TRAIN_MODEL:
-    print("Training CNN-LSTM model for current feature pipeline...")
-    class_weights_arr = compute_class_weight(
-        class_weight="balanced",
-        classes=np.unique(ytr),
-        y=ytr
-    )
-    class_weights = {int(c): float(w) for c, w in zip(np.unique(ytr), class_weights_arr)}
+def train_and_eval(seed_override=None):
+    global SEED
+    if seed_override is not None:
+        SEED = int(seed_override)
+        set_global_seed(SEED)
 
-    callbacks = []
-    if USE_CALLBACKS:
-        callbacks = [
-            EarlyStopping(monitor="val_accuracy", mode="max", patience=10, restore_best_weights=True),
-            ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=8, min_lr=1e-6),
-            ModelCheckpoint(MODEL_PATH, monitor="val_accuracy", mode="max", save_best_only=True),
-        ]
+    history_local = None
+    if TRAIN_MODEL:
+        print("Training CNN-LSTM model for current feature pipeline...")
+        class_weights_arr = compute_class_weight(
+            class_weight="balanced",
+            classes=np.unique(ytr),
+            y=ytr
+        )
+        class_weights = {int(c): float(w) for c, w in zip(np.unique(ytr), class_weights_arr)}
 
-    skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=SEED)
-    cv_scores = []
-    for fold_idx, (tr_idx, va_idx) in enumerate(skf.split(Xtr_scaled, ytr), start=1):
-        X_fold_tr = Xtr_scaled[tr_idx].reshape((-1, Xtr_scaled.shape[1], 1))
-        X_fold_va = Xtr_scaled[va_idx].reshape((-1, Xtr_scaled.shape[1], 1))
-        y_fold_tr = ytr[tr_idx]
-        y_fold_va = ytr[va_idx]
-        fold_model = build_model(Xtr.shape[1:], learning_rate=LEARNING_RATE)
-        fold_model.fit(
-            X_fold_tr,
-            y_fold_tr,
+        callbacks = []
+        if USE_CALLBACKS:
+            callbacks = [
+                EarlyStopping(monitor="val_accuracy", mode="max", patience=10, restore_best_weights=True),
+                ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=8, min_lr=1e-6),
+                ModelCheckpoint(MODEL_PATH, monitor="val_accuracy", mode="max", save_best_only=True),
+            ]
+
+        if not SKIP_CV:
+            skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=SEED)
+            cv_scores = []
+            for fold_idx, (tr_idx, va_idx) in enumerate(skf.split(Xtr_scaled, ytr), start=1):
+                X_fold_tr = Xtr_scaled[tr_idx].reshape((-1, Xtr_scaled.shape[1], 1))
+                X_fold_va = Xtr_scaled[va_idx].reshape((-1, Xtr_scaled.shape[1], 1))
+                y_fold_tr = ytr[tr_idx]
+                y_fold_va = ytr[va_idx]
+                fold_model = build_model(Xtr.shape[1:], learning_rate=LEARNING_RATE)
+                fold_model.fit(
+                    X_fold_tr,
+                    y_fold_tr,
+                    epochs=EPOCHS,
+                    batch_size=BATCH_SIZE,
+                    validation_split=VALIDATION_SPLIT,
+                    class_weight=class_weights,
+                    verbose=0,
+                )
+                fold_prob = fold_model.predict(X_fold_va, verbose=0)
+                fold_pred = np.argmax(fold_prob, axis=1)
+                fold_acc = float(np.mean(fold_pred == y_fold_va))
+                cv_scores.append(fold_acc)
+                print(f"CV fold {fold_idx}/{CV_FOLDS} accuracy: {fold_acc:.4f}")
+            print(f"CV mean accuracy: {np.mean(cv_scores):.4f} +/- {np.std(cv_scores):.4f}")
+        else:
+            print("CV skipped (SKIP_CV=1).")
+
+        model = build_model(Xtr.shape[1:], learning_rate=LEARNING_RATE)
+        history_local = model.fit(
+            Xtr,
+            ytr,
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
             validation_split=VALIDATION_SPLIT,
             class_weight=class_weights,
-            verbose=0,
+            callbacks=callbacks,
+            verbose=1,
         )
-        fold_prob = fold_model.predict(X_fold_va, verbose=0)
-        fold_pred = np.argmax(fold_prob, axis=1)
-        fold_acc = float(np.mean(fold_pred == y_fold_va))
-        cv_scores.append(fold_acc)
-        print(f"CV fold {fold_idx}/{CV_FOLDS} accuracy: {fold_acc:.4f}")
-    print(f"CV mean accuracy: {np.mean(cv_scores):.4f} +/- {np.std(cv_scores):.4f}")
+        model.save(MODEL_PATH)
+        print(f"Model saved to: {MODEL_PATH}")
+    else:
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError(
+                f"Pretrained model not found at '{MODEL_PATH}'. "
+                "Set TRAIN_MODEL=True once to create it."
+            )
 
-    model = build_model(Xtr.shape[1:], learning_rate=LEARNING_RATE)
-    history = model.fit(
-        Xtr,
-        ytr,
-        epochs=EPOCHS,
-        batch_size=BATCH_SIZE,
-        validation_split=VALIDATION_SPLIT,
-        class_weight=class_weights,
-        callbacks=callbacks,
-        verbose=1,
+        print("Loading pre-trained CNN-LSTM model...")
+        model = load_model(MODEL_PATH)
+
+        model_input_len = int(model.input_shape[1])
+        current_input_len = int(Xtr.shape[1])
+        if model_input_len != current_input_len:
+            raise ValueError(
+                f"Pretrained model expects {model_input_len} features, but current pipeline has {current_input_len}. "
+                "Set TRAIN_MODEL=True once to train a compatible model."
+            )
+
+    y_prob = model.predict(Xte, verbose=0)
+    y_pred = np.argmax(y_prob, axis=1)
+
+    report = classification_report(
+        yte,
+        y_pred,
+        labels=class_ids,
+        target_names=class_names,
+        digits=4,
+        zero_division=0,
     )
-    model.save(MODEL_PATH)
-    print(f"Model saved to: {MODEL_PATH}")
-else:
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(
-            f"Pretrained model not found at '{MODEL_PATH}'. "
-            "Set TRAIN_MODEL=True once to create it."
-        )
+    print("\nClassification Report:\n")
+    print(report)
 
-    print("Loading pre-trained CNN-LSTM model...")
-    model = load_model(MODEL_PATH)
+    acc_local = float(np.mean(y_pred == yte))
+    return acc_local, y_prob, y_pred, report, history_local, model
 
-    model_input_len = int(model.input_shape[1])
-    current_input_len = int(Xtr.shape[1])
-    if model_input_len != current_input_len:
-        raise ValueError(
-            f"Pretrained model expects {model_input_len} features, but current pipeline has {current_input_len}. "
-            "Set TRAIN_MODEL=True once to train a compatible model."
-        )
+
+history = None
+acc, y_prob, y_pred, report, history, model = train_and_eval(seed_override=None)
 
 
 # ---------------- EVALUATION OUTPUTS ----------------
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-y_prob = model.predict(Xte, verbose=0)
-y_pred = np.argmax(y_prob, axis=1)
+if y_prob is None or y_pred is None:
+    y_prob = model.predict(Xte, verbose=0)
+    y_pred = np.argmax(y_prob, axis=1)
 
 report = classification_report(
     yte,
@@ -656,6 +711,3 @@ if RUN_EXPLAINABILITY:
     run_shap(model, Xte, feature_names)
     run_lime(model, Xte, feature_names)   # optional (slow)
     run_pdp(model, Xte, feature_names)
-
-
-

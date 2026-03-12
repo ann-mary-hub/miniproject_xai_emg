@@ -1,0 +1,241 @@
+true_label,feature,delta_sign,mdri_base,mdri_mut,mdri_change
+Healthy,Standard Deviation (SD),minus,29.9997,29.9997,0.0000
+Healthy,Standard Deviation (SD),plus,29.9997,29.9995,-0.0001
+Healthy,Integrated EMG (IEMG),minus,29.9997,29.9998,0.0002
+Healthy,Integrated EMG (IEMG),plus,29.9997,29.9994,-0.0002
+Healthy,Turn Count (TC),minus,29.9997,30.0000,0.0003
+Healthy,Turn Count (TC),plus,29.9997,29.9906,-0.0090
+Healthy,Willison Amplitude (WAMP),minus,29.9997,29.9998,0.0002
+Healthy,Willison Amplitude (WAMP),plus,29.9997,29.9996,-0.0000
+Healthy,Motor Unit Action Potential (MUAP),minus,29.9997,29.9927,-0.0070
+Healthy,Motor Unit Action Potential (MUAP),plus,29.9997,30.0000,0.0003
+Healthy,Total Power (TP),minus,29.9997,29.9848,-0.0149
+Healthy,Total Power (TP),plus,29.9997,30.0000,0.0003
+Healthy,Variance of Central Frequency (VCF),minus,29.9997,30.0000,0.0003
+Healthy,Variance of Central Frequency (VCF),plus,29.9997,29.9876,-0.0121
+Healthy,RMS Envelope (RMSE),minus,29.9997,30.0000,0.0003
+Healthy,RMS Envelope (RMSE),plus,29.9997,29.9883,-0.0113
+Healthy,Standard Deviation (SD),minus,30.0000,30.0000,-0.0000
+Healthy,Standard Deviation (SD),plus,30.0000,30.0000,-0.0000
+Healthy,Integrated EMG (IEMG),minus,30.0000,30.0000,0.0000
+Healthy,Integrated EMG (IEMG),plus,30.0000,29.9999,-0.0001
+Healthy,Turn Count (TC),minus,30.0000,30.0000,-0.0000
+Healthy,Turn Count (TC),plus,30.0000,29.9995,-0.0005
+Healthy,Willison Amplitude (WAMP),minus,30.0000,30.0000,-0.0000
+Healthy,Willison Amplitude (WAMP),plus,30.0000,30.0000,-0.0000
+Healthy,Motor Unit Action Potential (MUAP),minus,30.0000,29.9999,-0.0001
+Healthy,Motor Unit Action Potential (MUAP),plus,30.0000,30.0000,0.0000
+Healthy,Total Power (TP),minus,30.0000,29.9830,-0.0170
+Healthy,Total Power (TP),plus,30.0000,30.0000,-0.0000
+Healthy,Variance of Central Frequency (VCF),minus,30.0000,30.0000,-0.0000
+Healthy,Variance of Central Frequency (VCF),plus,30.0000,29.9991,-0.0009
+Healthy,RMS Envelope (RMSE),minus,30.0000,30.0000,-0.0000
+Healthy,RMS Envelope (RMSE),plus,30.0000,29.9795,-0.0205
+Healthy,Standard Deviation (SD),minus,29.9947,29.9966,0.0019
+Healthy,Standard Deviation (SD),plus,29.9947,29.9906,-0.0041
+Healthy,Integrated EMG (IEMG),minus,29.9947,29.9988,0.0041
+Healthy,Integrated EMG (IEMG),plus,29.9947,29.9822,-0.0125
+Healthy,Turn Count (TC),minus,29.9947,29.9863,-0.0084
+Healthy,Turn Count (TC),plus,29.9947,29.9884,-0.0063
+Healthy,Willison Amplitude (WAMP),minus,29.9947,29.9989,0.0041
+Healthy,Willison Amplitude (WAMP),plus,29.9947,29.9987,0.0040
+Healthy,Motor Unit Action Potential (MUAP),minus,29.9947,30.0008,0.0061
+Healthy,Motor Unit Action Potential (MUAP),plus,29.9947,30.0162,0.0215
+Healthy,Total Power (TP),minus,29.9947,29.9744,-0.0203
+Healthy,Total Power (TP),plus,29.9947,30.0019,0.0072
+Healthy,Variance of Central Frequency (VCF),minus,29.9947,29.9905,-0.0043
+Healthy,Variance of Central Frequency (VCF),plus,29.9947,30.0119,0.0172
+Healthy,RMS Envelope (RMSE),minus,29.9947,29.9994,0.0047
+Healthy,RMS Envelope (RMSE),plus,29.9947,29.8444,-0.1504
+Healthy,Standard Deviation (SD),minus,30.0006,30.0002,-0.0004
+Healthy,Standard Deviation (SD),plus,30.0006,30.0019,0.0013
+Healthy,Integrated EMG (IEMG),minus,30.0006,30.0003,-0.0003
+Healthy,Integrated EMG (IEMG),plus,30.0006,30.0012,0.0006
+Healthy,Turn Count (TC),minus,30.0006,30.0005,-0.0001
+Healthy,Turn Count (TC),plus,30.0006,30.0021,0.0015
+Healthy,Willison Amplitude (WAMP),minus,30.0006,30.3071,0.3065
+Healthy,Willison Amplitude (WAMP),plus,30.0006,30.0000,-0.0006
+Healthy,Motor Unit Action Potential (MUAP),minus,30.0006,30.0006,0.0000
+Healthy,Motor Unit Action Potential (MUAP),plus,30.0006,30.0029,0.0023
+Healthy,Total Power (TP),minus,30.0006,30.0059,0.0053
+Healthy,Total Power (TP),plus,30.0006,30.0003,-0.0003
+Healthy,Variance of Central Frequency (VCF),minus,30.0006,29.9999,-0.0007
+Healthy,Variance of Central Frequency (VCF),plus,30.0006,30.0069,0.0063
+Healthy,RMS Envelope (RMSE),minus,30.0006,30.0000,-0.0006
+Healthy,RMS Envelope (RMSE),plus,30.0006,30.7977,0.7971
+Healthy,Standard Deviation (SD),minus,30.0050,29.9999,-0.0051
+Healthy,Standard Deviation (SD),plus,30.0050,30.0651,0.0601
+Healthy,Integrated EMG (IEMG),minus,30.0050,30.0023,-0.0027
+Healthy,Integrated EMG (IEMG),plus,30.0050,30.0150,0.0100
+Healthy,Turn Count (TC),minus,30.0050,30.0009,-0.0041
+Healthy,Turn Count (TC),plus,30.0050,34.9420,4.9370
+Healthy,Willison Amplitude (WAMP),minus,30.0050,30.0026,-0.0024
+Healthy,Willison Amplitude (WAMP),plus,30.0050,30.1416,0.1366
+Healthy,Motor Unit Action Potential (MUAP),minus,30.0050,30.0115,0.0065
+Healthy,Motor Unit Action Potential (MUAP),plus,30.0050,30.0389,0.0339
+Healthy,Total Power (TP),minus,30.0050,30.3309,0.3260
+Healthy,Total Power (TP),plus,30.0050,30.0011,-0.0039
+Healthy,Variance of Central Frequency (VCF),minus,30.0050,30.2262,0.2212
+Healthy,Variance of Central Frequency (VCF),plus,30.0050,30.0026,-0.0023
+Healthy,RMS Envelope (RMSE),minus,30.0050,30.0000,-0.0050
+Healthy,RMS Envelope (RMSE),plus,30.0050,48.4418,18.4368
+Myopathy,Standard Deviation (SD),minus,98.3815,98.3170,-0.0645
+Myopathy,Standard Deviation (SD),plus,98.3815,99.1970,0.8155
+Myopathy,Integrated EMG (IEMG),minus,98.3815,98.2245,-0.1570
+Myopathy,Integrated EMG (IEMG),plus,98.3815,98.6838,0.3023
+Myopathy,Turn Count (TC),minus,98.3815,99.3372,0.9557
+Myopathy,Turn Count (TC),plus,98.3815,98.0918,-0.2897
+Myopathy,Willison Amplitude (WAMP),minus,98.3815,99.0278,0.6463
+Myopathy,Willison Amplitude (WAMP),plus,98.3815,98.5862,0.2048
+Myopathy,Motor Unit Action Potential (MUAP),minus,98.3815,98.1198,-0.2616
+Myopathy,Motor Unit Action Potential (MUAP),plus,98.3815,99.7946,1.4132
+Myopathy,Total Power (TP),minus,98.3815,99.0478,0.6664
+Myopathy,Total Power (TP),plus,98.3815,98.2076,-0.1738
+Myopathy,Variance of Central Frequency (VCF),minus,98.3815,99.8068,1.4254
+Myopathy,Variance of Central Frequency (VCF),plus,98.3815,99.9165,1.5351
+Myopathy,RMS Envelope (RMSE),minus,98.3815,99.0039,0.6224
+Myopathy,RMS Envelope (RMSE),plus,98.3815,99.8844,1.5029
+Myopathy,Standard Deviation (SD),minus,99.6711,99.7896,0.1185
+Myopathy,Standard Deviation (SD),plus,99.6711,99.6837,0.0126
+Myopathy,Integrated EMG (IEMG),minus,99.6711,99.6810,0.0099
+Myopathy,Integrated EMG (IEMG),plus,99.6711,99.7392,0.0682
+Myopathy,Turn Count (TC),minus,99.6711,98.7423,-0.9287
+Myopathy,Turn Count (TC),plus,99.6711,99.9100,0.2389
+Myopathy,Willison Amplitude (WAMP),minus,99.6711,99.9331,0.2620
+Myopathy,Willison Amplitude (WAMP),plus,99.6711,99.1065,-0.5646
+Myopathy,Motor Unit Action Potential (MUAP),minus,99.6711,99.9075,0.2364
+Myopathy,Motor Unit Action Potential (MUAP),plus,99.6711,99.1181,-0.5530
+Myopathy,Total Power (TP),minus,99.6711,99.5443,-0.1268
+Myopathy,Total Power (TP),plus,99.6711,99.7098,0.0387
+Myopathy,Variance of Central Frequency (VCF),minus,99.6711,99.9486,0.2776
+Myopathy,Variance of Central Frequency (VCF),plus,99.6711,92.6196,-7.0515
+Myopathy,RMS Envelope (RMSE),minus,99.6711,99.7204,0.0494
+Myopathy,RMS Envelope (RMSE),plus,99.6711,98.3500,-1.3211
+Myopathy,Standard Deviation (SD),minus,99.9628,99.8975,-0.0652
+Myopathy,Standard Deviation (SD),plus,99.9628,99.9854,0.0226
+Myopathy,Integrated EMG (IEMG),minus,99.9628,99.9566,-0.0062
+Myopathy,Integrated EMG (IEMG),plus,99.9628,99.9790,0.0163
+Myopathy,Turn Count (TC),minus,99.9628,99.9006,-0.0622
+Myopathy,Turn Count (TC),plus,99.9628,99.9756,0.0128
+Myopathy,Willison Amplitude (WAMP),minus,99.9628,99.8771,-0.0856
+Myopathy,Willison Amplitude (WAMP),plus,99.9628,99.9779,0.0151
+Myopathy,Motor Unit Action Potential (MUAP),minus,99.9628,99.8959,-0.0669
+Myopathy,Motor Unit Action Potential (MUAP),plus,99.9628,99.8744,-0.0883
+Myopathy,Total Power (TP),minus,99.9628,99.9715,0.0087
+Myopathy,Total Power (TP),plus,99.9628,99.9924,0.0297
+Myopathy,Variance of Central Frequency (VCF),minus,99.9628,99.6587,-0.3041
+Myopathy,Variance of Central Frequency (VCF),plus,99.9628,99.9963,0.0335
+Myopathy,RMS Envelope (RMSE),minus,99.9628,99.3968,-0.5660
+Myopathy,RMS Envelope (RMSE),plus,99.9628,99.9687,0.0059
+Myopathy,Standard Deviation (SD),minus,57.1847,57.1671,-0.0177
+Myopathy,Standard Deviation (SD),plus,57.1847,57.3174,0.1327
+Myopathy,Integrated EMG (IEMG),minus,57.1847,53.9228,-3.2620
+Myopathy,Integrated EMG (IEMG),plus,57.1847,46.7920,-10.3927
+Myopathy,Turn Count (TC),minus,57.1847,45.5682,-11.6165
+Myopathy,Turn Count (TC),plus,57.1847,76.5386,19.3539
+Myopathy,Willison Amplitude (WAMP),minus,57.1847,46.5756,-10.6092
+Myopathy,Willison Amplitude (WAMP),plus,57.1847,54.3037,-2.8810
+Myopathy,Motor Unit Action Potential (MUAP),minus,57.1847,57.0606,-0.1242
+Myopathy,Motor Unit Action Potential (MUAP),plus,57.1847,44.3708,-12.8139
+Myopathy,Total Power (TP),minus,57.1847,56.7580,-0.4268
+Myopathy,Total Power (TP),plus,57.1847,42.5267,-14.6580
+Myopathy,Variance of Central Frequency (VCF),minus,57.1847,55.0296,-2.1551
+Myopathy,Variance of Central Frequency (VCF),plus,57.1847,45.3419,-11.8428
+Myopathy,RMS Envelope (RMSE),minus,57.1847,49.6975,-7.4872
+Myopathy,RMS Envelope (RMSE),plus,57.1847,59.7386,2.5538
+Myopathy,Standard Deviation (SD),minus,94.2135,96.8343,2.6208
+Myopathy,Standard Deviation (SD),plus,94.2135,95.5260,1.3125
+Myopathy,Integrated EMG (IEMG),minus,94.2135,96.5089,2.2954
+Myopathy,Integrated EMG (IEMG),plus,94.2135,95.9405,1.7270
+Myopathy,Turn Count (TC),minus,94.2135,91.0623,-3.1512
+Myopathy,Turn Count (TC),plus,94.2135,98.4032,4.1897
+Myopathy,Willison Amplitude (WAMP),minus,94.2135,91.1760,-3.0375
+Myopathy,Willison Amplitude (WAMP),plus,94.2135,98.2690,4.0555
+Myopathy,Motor Unit Action Potential (MUAP),minus,94.2135,98.5604,4.3468
+Myopathy,Motor Unit Action Potential (MUAP),plus,94.2135,93.7861,-0.4274
+Myopathy,Total Power (TP),minus,94.2135,94.9717,0.7582
+Myopathy,Total Power (TP),plus,94.2135,92.3840,-1.8295
+Myopathy,Variance of Central Frequency (VCF),minus,94.2135,98.7414,4.5279
+Myopathy,Variance of Central Frequency (VCF),plus,94.2135,84.5036,-9.7099
+Myopathy,RMS Envelope (RMSE),minus,94.2135,94.4972,0.2837
+Myopathy,RMS Envelope (RMSE),plus,94.2135,96.1982,1.9847
+Neuropathy,Standard Deviation (SD),minus,84.2921,88.8149,4.5229
+Neuropathy,Standard Deviation (SD),plus,84.2921,89.9901,5.6980
+Neuropathy,Integrated EMG (IEMG),minus,84.2921,85.3301,1.0380
+Neuropathy,Integrated EMG (IEMG),plus,84.2921,84.4188,0.1267
+Neuropathy,Turn Count (TC),minus,84.2921,85.0654,0.7733
+Neuropathy,Turn Count (TC),plus,84.2921,83.8272,-0.4649
+Neuropathy,Willison Amplitude (WAMP),minus,84.2921,85.6632,1.3711
+Neuropathy,Willison Amplitude (WAMP),plus,84.2921,88.8770,4.5850
+Neuropathy,Motor Unit Action Potential (MUAP),minus,84.2921,93.5243,9.2322
+Neuropathy,Motor Unit Action Potential (MUAP),plus,84.2921,95.5388,11.2467
+Neuropathy,Total Power (TP),minus,84.2921,83.9091,-0.3830
+Neuropathy,Total Power (TP),plus,84.2921,86.1398,1.8477
+Neuropathy,Variance of Central Frequency (VCF),minus,84.2921,96.8449,12.5528
+Neuropathy,Variance of Central Frequency (VCF),plus,84.2921,85.9167,1.6246
+Neuropathy,RMS Envelope (RMSE),minus,84.2921,86.4213,2.1292
+Neuropathy,RMS Envelope (RMSE),plus,84.2921,91.0635,6.7714
+Neuropathy,Standard Deviation (SD),minus,99.1331,99.1540,0.0209
+Neuropathy,Standard Deviation (SD),plus,99.1331,98.9039,-0.2292
+Neuropathy,Integrated EMG (IEMG),minus,99.1331,98.5972,-0.5359
+Neuropathy,Integrated EMG (IEMG),plus,99.1331,99.3651,0.2321
+Neuropathy,Turn Count (TC),minus,99.1331,98.4771,-0.6560
+Neuropathy,Turn Count (TC),plus,99.1331,99.3478,0.2148
+Neuropathy,Willison Amplitude (WAMP),minus,99.1331,99.6060,0.4729
+Neuropathy,Willison Amplitude (WAMP),plus,99.1331,98.7484,-0.3847
+Neuropathy,Motor Unit Action Potential (MUAP),minus,99.1331,99.6756,0.5426
+Neuropathy,Motor Unit Action Potential (MUAP),plus,99.1331,97.7088,-1.4243
+Neuropathy,Total Power (TP),minus,99.1331,97.1745,-1.9586
+Neuropathy,Total Power (TP),plus,99.1331,99.7800,0.6470
+Neuropathy,Variance of Central Frequency (VCF),minus,99.1331,97.2815,-1.8516
+Neuropathy,Variance of Central Frequency (VCF),plus,99.1331,99.9346,0.8016
+Neuropathy,RMS Envelope (RMSE),minus,99.1331,97.9222,-1.2109
+Neuropathy,RMS Envelope (RMSE),plus,99.1331,98.9451,-0.1879
+Neuropathy,Standard Deviation (SD),minus,95.7310,98.7934,3.0624
+Neuropathy,Standard Deviation (SD),plus,95.7310,89.8692,-5.8619
+Neuropathy,Integrated EMG (IEMG),minus,95.7310,96.1328,0.4018
+Neuropathy,Integrated EMG (IEMG),plus,95.7310,97.1733,1.4423
+Neuropathy,Turn Count (TC),minus,95.7310,93.8593,-1.8717
+Neuropathy,Turn Count (TC),plus,95.7310,99.4791,3.7480
+Neuropathy,Willison Amplitude (WAMP),minus,95.7310,99.4319,3.7009
+Neuropathy,Willison Amplitude (WAMP),plus,95.7310,91.8578,-3.8732
+Neuropathy,Motor Unit Action Potential (MUAP),minus,95.7310,99.9406,4.2095
+Neuropathy,Motor Unit Action Potential (MUAP),plus,95.7310,87.4203,-8.3108
+Neuropathy,Total Power (TP),minus,95.7310,99.3180,3.5869
+Neuropathy,Total Power (TP),plus,95.7310,93.2745,-2.4566
+Neuropathy,Variance of Central Frequency (VCF),minus,95.7310,94.2626,-1.4684
+Neuropathy,Variance of Central Frequency (VCF),plus,95.7310,99.4907,3.7597
+Neuropathy,RMS Envelope (RMSE),minus,95.7310,98.3569,2.6259
+Neuropathy,RMS Envelope (RMSE),plus,95.7310,92.0701,-3.6610
+Neuropathy,Standard Deviation (SD),minus,99.9759,99.9780,0.0021
+Neuropathy,Standard Deviation (SD),plus,99.9759,99.9704,-0.0055
+Neuropathy,Integrated EMG (IEMG),minus,99.9759,99.9657,-0.0102
+Neuropathy,Integrated EMG (IEMG),plus,99.9759,99.9806,0.0047
+Neuropathy,Turn Count (TC),minus,99.9759,99.9122,-0.0637
+Neuropathy,Turn Count (TC),plus,99.9759,99.9949,0.0190
+Neuropathy,Willison Amplitude (WAMP),minus,99.9759,99.9687,-0.0072
+Neuropathy,Willison Amplitude (WAMP),plus,99.9759,99.9694,-0.0065
+Neuropathy,Motor Unit Action Potential (MUAP),minus,99.9759,99.9825,0.0066
+Neuropathy,Motor Unit Action Potential (MUAP),plus,99.9759,99.9542,-0.0217
+Neuropathy,Total Power (TP),minus,99.9759,99.9546,-0.0213
+Neuropathy,Total Power (TP),plus,99.9759,99.9785,0.0026
+Neuropathy,Variance of Central Frequency (VCF),minus,99.9759,99.9519,-0.0240
+Neuropathy,Variance of Central Frequency (VCF),plus,99.9759,99.9754,-0.0005
+Neuropathy,RMS Envelope (RMSE),minus,99.9759,99.9418,-0.0341
+Neuropathy,RMS Envelope (RMSE),plus,99.9759,99.9914,0.0155
+Neuropathy,Standard Deviation (SD),minus,99.9913,99.9964,0.0051
+Neuropathy,Standard Deviation (SD),plus,99.9913,99.9935,0.0022
+Neuropathy,Integrated EMG (IEMG),minus,99.9913,99.9927,0.0014
+Neuropathy,Integrated EMG (IEMG),plus,99.9913,99.9897,-0.0016
+Neuropathy,Turn Count (TC),minus,99.9913,99.9972,0.0059
+Neuropathy,Turn Count (TC),plus,99.9913,99.9508,-0.0405
+Neuropathy,Willison Amplitude (WAMP),minus,99.9913,99.9951,0.0038
+Neuropathy,Willison Amplitude (WAMP),plus,99.9913,99.9575,-0.0338
+Neuropathy,Motor Unit Action Potential (MUAP),minus,99.9913,99.9966,0.0053
+Neuropathy,Motor Unit Action Potential (MUAP),plus,99.9913,99.9803,-0.0110
+Neuropathy,Total Power (TP),minus,99.9913,99.9882,-0.0031
+Neuropathy,Total Power (TP),plus,99.9913,99.9959,0.0046
+Neuropathy,Variance of Central Frequency (VCF),minus,99.9913,99.9729,-0.0183
+Neuropathy,Variance of Central Frequency (VCF),plus,99.9913,99.9993,0.0080
+Neuropathy,RMS Envelope (RMSE),minus,99.9913,99.9965,0.0052
+Neuropathy,RMS Envelope (RMSE),plus,99.9913,99.9830,-0.0083
